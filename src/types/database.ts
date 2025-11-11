@@ -28,6 +28,7 @@ export interface Database {
           client_name: string;
           user_id: string;
           notification_sent?: boolean;
+          notification_scheduled?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -38,6 +39,7 @@ export interface Database {
           client_name?: string;
           user_id?: string;
           notification_sent?: boolean;
+          notification_scheduled?: boolean;
           created_at?: string;
           updated_at?: string;
         };

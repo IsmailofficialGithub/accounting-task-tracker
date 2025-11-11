@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ProjectInsert, ProjectUpdate } from "@/types/database";
+import { sendEmail, createDeadlineNotificationEmail } from "@/lib/email";
+
+const NOTIFICATION_FALLBACK_EMAIL =
+  process.env.NOTIFICATION_FALLBACK_EMAIL || "client@example.com";
 
 export async function GET() {
   try {
@@ -66,6 +70,7 @@ export async function POST(request: NextRequest) {
       client_name,
       user_id: user.id,
       notification_sent: false,
+      notification_scheduled: false,
     };
 
     const { data: project, error } = await supabase
@@ -80,6 +85,60 @@ export async function POST(request: NextRequest) {
         { error: "Failed to create project" },
         { status: 500 }
       );
+    }
+
+    if (project) {
+      const deadlineDate = new Date(project.deadline);
+      const now = new Date();
+      now.setUTCHours(0, 0, 0, 0);
+      deadlineDate.setUTCHours(0, 0, 0, 0);
+
+      const diffInMs = deadlineDate.getTime() - now.getTime();
+      const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
+
+      if (diffInDays >= 0 && diffInDays <= 3) {
+        try {
+          const html = createDeadlineNotificationEmail(
+            project.title,
+            project.client_name,
+            project.deadline
+          );
+
+          const recipient = user.email
+            ? user.email
+            : NOTIFICATION_FALLBACK_EMAIL;
+
+          await sendEmail({
+            to: recipient,
+            subject: `⏰ Project "${project.title}" deadline reminder`,
+            html,
+          });
+
+          const { error: updateError } = await supabase
+            .from("projects")
+            .update({
+              notification_sent: true,
+              notification_scheduled: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", project.id);
+
+          if (updateError) {
+            console.error(
+              "Failed to update notification status for project:",
+              updateError
+            );
+          } else {
+            project.notification_sent = true;
+            project.notification_scheduled = true;
+          }
+        } catch (notificationError) {
+          console.error(
+            `Failed to send immediate notification for project "${project.title}":`,
+            notificationError
+          );
+        }
+      }
     }
 
     return NextResponse.json({ project }, { status: 201 });

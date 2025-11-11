@@ -54,7 +54,25 @@ export async function GET(request: Request) {
           project.deadline
         );
 
-        const recipient = NOTIFICATION_FALLBACK_EMAIL;
+        let recipient = NOTIFICATION_FALLBACK_EMAIL;
+
+        try {
+          const { data: userData, error: userError } =
+            await supabase.auth.admin.getUserById(project.user_id);
+
+          if (userError) {
+            throw userError;
+          }
+
+          if (userData?.user?.email) {
+            recipient = userData.user.email;
+          }
+        } catch (userLookupError) {
+          console.error(
+            `Failed to resolve email for user "${project.user_id}":`,
+            userLookupError
+          );
+        }
 
         await sendEmail({
           to: recipient,
